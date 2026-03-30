@@ -6,29 +6,13 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: products
-    // Document ID: productId
-    // Fields:
-    //   - id: string (required)
-    //   - name: string (required, 1-100 chars)
-    //   - price: number (required, positive)
-    //   - image: string (optional, URL)
-    //   - ingredients: list (required, strings)
-    //   - description: string (optional, 0-1000 chars)
-    //   - available: bool (required)
+    // Fields: id, name, price, image, ingredients, description, available
     //
     // Collection: orders
-    // Document ID: orderId
-    // Fields:
-    //   - id: string (required)
-    //   - customerName: string (required, 1-100 chars)
-    //   - phone: string (required, 1-20 chars)
-    //   - items: list (required, objects)
-    //   - total: number (required, positive)
-    //   - type: string (required, enum: Pickup, Delivery)
-    //   - address: string (optional, 0-500 chars)
-    //   - status: string (required, enum: New, Preparing, Ready, Completed)
-    //   - createdAt: number (required)
-    //   - uid: string (optional, owner)
+    // Fields: id, customerName, phone, items, total, type, address, status, createdAt, uid
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, role, createdAt
     //
     // ===============================================================
 
@@ -43,44 +27,57 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.uid;
-    }
-
     function isAdmin() {
       return isAuthenticated() &&
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-          request.auth.token.email == "tarikukebede200@gmail.com");
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "tarikukebede200@gmail.com" && request.auth.token.email_verified == true));
     }
 
     function isValidUrl(url) {
       return url is string && (url.size() == 0 || url.matches("^https://.*") || url.matches("^http://.*"));
     }
 
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
+    
     function isValidProduct(data) {
       return data.keys().hasAll(['id', 'name', 'price', 'ingredients', 'available']) &&
-             data.id is string &&
-             data.name is string && data.name.size() >= 1 &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
              data.price is number && data.price >= 0 &&
-             data.ingredients is list &&
-             data.available is bool;
+             data.ingredients is list && data.ingredients.size() <= 20 &&
+             data.available is bool &&
+             (!('image' in data) || (isValidUrl(data.image) && data.image.size() <= 500)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000));
     }
 
     function isValidOrder(data) {
       return data.keys().hasAll(['id', 'customerName', 'phone', 'items', 'total', 'type', 'status', 'createdAt']) &&
-             data.id is string &&
+             data.id is string && data.id.size() > 0 &&
              data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
              data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 20 &&
-             data.items is list &&
-             data.total is number && data.total > 0 &&
+             data.items is list && data.items.size() >= 1 && data.items.size() <= 50 &&
+             data.total is number && data.total >= 0 &&
              data.type in ['Pickup', 'Delivery'] &&
              data.status in ['New', 'Preparing', 'Ready', 'Completed'] &&
              data.createdAt is number &&
              (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
-             (!('uid' in data) || data.uid is string);
+             (!('uid' in data) || (data.uid is string && data.uid.size() > 0));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'user'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('createdAt' in data) || data.createdAt is number);
     }
 
     // ===============================================================
@@ -88,26 +85,31 @@ service cloud.firestore {
     // ===============================================================
 
     match /products/{productId} {
-      allow read: if true; // Products are public
+      allow read: if true;
       allow create, update: if isAdmin() && isValidProduct(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-      allow create: if isValidOrder(request.resource.data) && 
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data) && 
                       (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
       allow update: if (isAdmin() && isValidOrder(request.resource.data)) || 
                       (isAuthenticated() && resource.data.uid == request.auth.uid && 
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
-                       request.resource.data.status == resource.data.status); // Owner can't really change much once placed
+                       request.resource.data.status == resource.data.status);
       allow delete: if isAdmin();
     }
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId) && 
-                              (!('role' in request.resource.data) || request.resource.data.role == 'user' || isAdmin());
+      // Users can only create their own profile as 'user' role unless they are already admin
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || isAdmin());
+      // Users cannot change their own role unless they are admin
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
     }
   }
 }

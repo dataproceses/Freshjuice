@@ -32,6 +32,19 @@
         "uid": { "type": "string", "description": "User ID of the customer who placed the order" }
       },
       "required": ["id", "customerName", "phone", "items", "total", "type", "status", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user profile with role-based access control",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "displayName": { "type": "string", "description": "User's full name" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role in the system" },
+        "createdAt": { "type": "number", "description": "Timestamp when the user profile was created" }
+      },
+      "required": ["uid", "email", "role"]
     }
   },
   "firestore": {
@@ -42,6 +55,10 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Collection of customer orders"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles for RBAC"
     }
   }
 }

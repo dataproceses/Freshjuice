@@ -155,9 +155,13 @@ const App: React.FC = () => {
 
   // Auth State
   const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const isAdminUser = useMemo(() => user?.email === "tarikukebede200@gmail.com", [user]);
+  const isAdminUser = useMemo(() => {
+    if (userRole === 'admin') return true;
+    return user?.email === "tarikukebede200@gmail.com";
+  }, [user, userRole]);
 
   // Firestore Connection Test
   useEffect(() => {
@@ -174,8 +178,24 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        // Fetch role from Firestore
+        try {
+          const userSnap = await getDocFromServer(doc(db, 'users', currentUser.uid));
+          if (userSnap.exists()) {
+            setUserRole(userSnap.data().role);
+          } else {
+            setUserRole('user');
+          }
+        } catch (e) {
+          console.error("Failed to fetch user role", e);
+          setUserRole('user');
+        }
+      } else {
+        setUserRole(null);
+      }
       setIsAuthReady(true);
     });
     return () => unsubscribe();
@@ -246,14 +266,18 @@ const App: React.FC = () => {
         const userSnap = await getDocFromServer(userRef);
         
         if (!userSnap.exists()) {
+          const role = loggedInUser.email === "tarikukebede200@gmail.com" ? 'admin' : 'user';
           await setDoc(userRef, {
             uid: loggedInUser.uid,
             email: loggedInUser.email,
             displayName: loggedInUser.displayName,
             photoURL: loggedInUser.photoURL,
-            role: loggedInUser.email === "tarikukebede200@gmail.com" ? 'admin' : 'user',
+            role: role,
             createdAt: Date.now()
           });
+          setUserRole(role);
+        } else {
+          setUserRole(userSnap.data().role);
         }
       }
     } catch (error: any) {
