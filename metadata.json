@@ -1,0 +1,7 @@
+{
+  "name": "FreshPress Juice Shop",
+  "description": "A vibrant, AI-powered juice shop application for local ordering, pickup, and delivery management.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

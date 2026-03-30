@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Document ID: productId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - price: number (required, positive)
+    //   - image: string (optional, URL)
+    //   - ingredients: list (required, strings)
+    //   - description: string (optional, 0-1000 chars)
+    //   - available: bool (required)
+    //
+    // Collection: orders
+    // Document ID: orderId
+    // Fields:
+    //   - id: string (required)
+    //   - customerName: string (required, 1-100 chars)
+    //   - phone: string (required, 1-20 chars)
+    //   - items: list (required, objects)
+    //   - total: number (required, positive)
+    //   - type: string (required, enum: Pickup, Delivery)
+    //   - address: string (optional, 0-500 chars)
+    //   - status: string (required, enum: New, Preparing, Ready, Completed)
+    //   - createdAt: number (required)
+    //   - uid: string (optional, owner)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "tarikukebede200@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'price', 'ingredients', 'available']) &&
+             data.id is string &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.price is number && data.price > 0 &&
+             data.ingredients is list &&
+             data.available is bool &&
+             (!('image' in data) || isValidUrl(data.image)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000));
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'customerName', 'phone', 'items', 'total', 'type', 'status', 'createdAt']) &&
+             data.id is string &&
+             data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 20 &&
+             data.items is list &&
+             data.total is number && data.total > 0 &&
+             data.type in ['Pickup', 'Delivery'] &&
+             data.status in ['New', 'Preparing', 'Ready', 'Completed'] &&
+             data.createdAt is number &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+             (!('uid' in data) || data.uid is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /products/{productId} {
+      allow read: if true; // Products are public
+      allow create, update: if isAdmin() && isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow create: if isValidOrder(request.resource.data) && 
+                      (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
+      allow update: if (isAdmin() && isValidOrder(request.resource.data)) || 
+                      (isAuthenticated() && resource.data.uid == request.auth.uid && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+                       request.resource.data.status == resource.data.status); // Owner can't really change much once placed
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && 
+                              (!('role' in request.resource.data) || request.resource.data.role == 'user' || isAdmin());
+    }
+  }
+}

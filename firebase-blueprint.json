@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A juice product available in the shop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID for the product" },
+        "name": { "type": "string", "description": "Name of the juice" },
+        "price": { "type": "number", "description": "Price of the juice" },
+        "image": { "type": "string", "description": "URL to the product image" },
+        "ingredients": { "type": "array", "items": { "type": "string" }, "description": "List of ingredients" },
+        "description": { "type": "string", "description": "AI-generated appetizing description" },
+        "available": { "type": "boolean", "description": "Whether the product is currently in stock" }
+      },
+      "required": ["id", "name", "price", "ingredients", "available"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID for the order" },
+        "customerName": { "type": "string", "description": "Name of the customer" },
+        "phone": { "type": "string", "description": "Customer phone number" },
+        "items": { "type": "array", "items": { "$ref": "Product" }, "description": "List of products ordered" },
+        "total": { "type": "number", "description": "Total order amount" },
+        "type": { "type": "string", "enum": ["Pickup", "Delivery"], "description": "Order fulfillment type" },
+        "address": { "type": "string", "description": "Delivery address if applicable" },
+        "status": { "type": "string", "enum": ["New", "Preparing", "Ready", "Completed"], "description": "Current order status" },
+        "createdAt": { "type": "number", "description": "Timestamp when the order was placed" },
+        "uid": { "type": "string", "description": "User ID of the customer who placed the order" }
+      },
+      "required": ["id", "customerName", "phone", "items", "total", "type", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of juice products"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of customer orders"
+    }
+  }
+}
