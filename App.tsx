@@ -145,6 +145,7 @@ const App: React.FC = () => {
   const [isEnriching, setIsEnriching] = useState(false);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductImage, setNewProductImage] = useState('');
@@ -380,6 +381,7 @@ const App: React.FC = () => {
   const closeForm = () => {
     setIsAddingProduct(false);
     setEditingProduct(null);
+    setSaveError(null);
     setNewProductName('');
     setNewProductPrice('');
     setNewProductImage('');
@@ -396,10 +398,18 @@ const App: React.FC = () => {
     }
 
     setIsCreatingProduct(true);
+    const priceNum = parseFloat(newProductPrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      setSaveError("Please enter a valid positive price.");
+      setIsCreatingProduct(false);
+      return;
+    }
+
     const ingredientsArray = newProductIngredients.split(',').map(i => i.trim());
     
     try {
       let finalDescription = editingProduct?.description || '';
+      setSaveError(null);
       
       // If it's new, ask to refresh AI description
       if (!editingProduct) {
@@ -409,7 +419,7 @@ const App: React.FC = () => {
       const productData: Product = {
         id: editingProduct ? editingProduct.id : Date.now().toString(),
         name: newProductName,
-        price: parseFloat(newProductPrice),
+        price: priceNum,
         image: newProductImage || 'https://images.unsplash.com/photo-1622597467836-f30a588374f1?auto=format&fit=crop&q=80&w=400',
         ingredients: ingredientsArray,
         description: finalDescription,
@@ -419,7 +429,17 @@ const App: React.FC = () => {
       await setDoc(doc(db, 'products', productData.id), productData);
       closeForm();
     } catch (err) {
-      handleFirestoreError(err, editingProduct ? OperationType.UPDATE : OperationType.CREATE, 'products');
+      console.error("Save Product Error:", err);
+      try {
+        handleFirestoreError(err, editingProduct ? OperationType.UPDATE : OperationType.CREATE, 'products');
+      } catch (formattedErr: any) {
+        try {
+          const parsed = JSON.parse(formattedErr.message);
+          setSaveError(`Database Error: ${parsed.error}`);
+        } catch (e) {
+          setSaveError(formattedErr.message || "Failed to save product.");
+        }
+      }
     } finally {
       setIsCreatingProduct(false);
     }
@@ -643,6 +663,14 @@ const App: React.FC = () => {
                   <i className={`fas ${editingProduct ? 'fa-edit' : 'fa-plus-circle'} text-emerald-500`}></i> 
                   {editingProduct ? `Modify: ${editingProduct.name}` : 'New Juice Listing'}
                 </h3>
+
+                {saveError && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl mb-6 text-xs font-bold flex items-center gap-3">
+                    <i className="fas fa-exclamation-circle text-lg"></i>
+                    {saveError}
+                  </div>
+                )}
+
                 <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>

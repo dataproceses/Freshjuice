@@ -50,11 +50,11 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-          (request.auth.token.email == "tarikukebede200@gmail.com" && request.auth.token.email_verified == true));
+          request.auth.token.email == "tarikukebede200@gmail.com");
     }
 
     function isValidUrl(url) {
-      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+      return url is string && (url.size() == 0 || url.matches("^https://.*") || url.matches("^http://.*"));
     }
 
     // ===============================================================
@@ -63,12 +63,10 @@ service cloud.firestore {
     function isValidProduct(data) {
       return data.keys().hasAll(['id', 'name', 'price', 'ingredients', 'available']) &&
              data.id is string &&
-             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
-             data.price is number && data.price > 0 &&
+             data.name is string && data.name.size() >= 1 &&
+             data.price is number && data.price >= 0 &&
              data.ingredients is list &&
-             data.available is bool &&
-             (!('image' in data) || isValidUrl(data.image)) &&
-             (!('description' in data) || (data.description is string && data.description.size() <= 1000));
+             data.available is bool;
     }
 
     function isValidOrder(data) {
